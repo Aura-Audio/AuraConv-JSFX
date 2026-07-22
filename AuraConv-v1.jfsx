@@ -1,0 +1,41 @@
+desc: AuraConv Filter (Moving Average Convolution)
+
+slider1:1000<25,5000,1>Filter Length (Taps)
+slider2:0.15<0,1,0.01>Output Gain
+
+@init
+// Pointer for our circular buffer
+buf_pos = 0;
+// Memory allocation for the moving average (up to 500 samples)
+mem_start = 0;
+sum = 0;
+
+@slider
+// 'size' is equivalent to the [100] in your np.ones(100)
+size = slider1;
+gain = slider2;
+
+@sample
+// 1. Get input from the mic
+input = (spl0 + spl1) * 0.5;
+
+// 2. Convolution Logic (Moving Average)
+// To be efficient, we subtract the 'oldest' sample and add the 'newest'
+// This is mathematically identical to a convolution with ones(N)/N
+
+// Subtract the sample that is leaving the window
+sum -= mem_start[buf_pos];
+
+// Add the new sample to the window and store it
+mem_start[buf_pos] = input;
+sum += input;
+
+// Advance buffer position
+buf_pos += 1;
+(buf_pos >= size) ? buf_pos = 0;
+
+// 3. Calculate the average (the actual filtered result)
+output = (sum / size) * gain;
+
+// 4. Send to speakers
+spl0 = spl1 = output;
