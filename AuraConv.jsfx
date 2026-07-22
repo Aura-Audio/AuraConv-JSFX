@@ -1,0 +1,72 @@
+desc: AuraConv Filter (Moving Average Convolution)
+
+slider1:1000<25,5000,1>Filter Length (Taps)
+slider2:0.15<0,1,0.01>Output Gain
+
+@init
+// JSFX uses a global memory array. We define specific starting offsets.
+// Since max size is 5000, we distance L and R by 5000 to prevent overlap.
+mem_L = 0;
+mem_R = 5000; 
+
+buf_pos = 0;
+sum_L = 0;
+sum_R = 0;
+size = 0;
+
+@slider
+// Sliders are floating-point; ensure the size is a clean integer
+new_size = floor(slider1);
+gain = slider2;
+
+// Safely handle size changes (avoids corrupted sums & buffer out-of-bounds)
+new_size != size ? (
+    size = new_size;
+    
+    // Clear out the memory blocks (up to max possible usage: 5000 + 5000 = 10000)
+    memset(0, 0, 10000); 
+    
+    // Reset indices and sums
+    sum_L = sum_R = 0;
+    buf_pos = 0;
+);
+
+@sample
+// 1. Fetch stereo input
+in_L = spl0;
+in_R = spl1;
+
+// 2. Convolution Logic (Moving Average)
+// Subtract the oldest samples leaving the window
+sum_L -= mem_L[buf_pos];
+sum_R -= mem_R[buf_pos];
+
+// Store the newest samples in the circular buffer
+mem_L[buf_pos] = in_L;
+mem_R[buf_pos] = in_R;
+
+// Add the newest samples to our running total
+sum_L += in_L;
+sum_R += in_R;
+
+// Advance buffer position
+buf_pos += 1;
+
+// 3. Wrap-around & Anti-Drift Mechanism
+buf_pos >= size ? (
+    buf_pos = 0;
+    
+    // Periodically re-calculating the exact sum eliminates floating-point drift.
+    // Doing this on wrap-around is highly efficient in EEL2.
+    sum_L = sum_R = 0;
+    i = 0;
+    loop(size,
+        sum_L += mem_L[i];
+        sum_R += mem_R[i];
+        i += 1;
+    );
+);
+
+// 4. Calculate the average, apply gain, and send to speakers
+spl0 = (sum_L / size) * gain;
+spl1 = (sum_R / size) * gain;
